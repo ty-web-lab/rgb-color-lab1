@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>光と色のじっけん室：光の三原色シミュレーター</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Noto Sans JP & Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=JetBrains+Mono:wght@500;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans JP"', 'Inter', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    /* 基本フォントとスムーズなテーマ遷移 */
+    body {
+      font-family: 'Noto Sans JP', 'Inter', sans-serif;
+      transition: background-color 0.45s cubic-bezier(0.22, 1, 0.36, 1), color 0.45s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* カスタムレンジスライダー（タッチ操作しやすいサイズと視認性） */
+    input[type="range"].color-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 10px;
+      border-radius: 9999px;
+      outline: none;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    input[type="range"].color-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 3px solid var(--thumb-color, #3b82f6);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      cursor: grab;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    input[type="range"].color-slider::-webkit-slider-thumb:hover,
+    input[type="range"].color-slider:active::-webkit-slider-thumb {
+      transform: scale(1.15);
+      box-shadow: 0 0 0 5px var(--thumb-glow, rgba(59, 130, 246, 0.25));
+    }
+
+    input[type="range"].color-slider::-moz-range-thumb {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 3px solid var(--thumb-color, #3b82f6);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      cursor: grab;
+      transition: transform 0.15s ease;
+    }
+
+    /* キャンバスのタッチスクロール防止 */
+    #experimentCanvas {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* 微妙な方眼紙テクスチャ（CMYモード用） */
+    .paper-grid {
+      background-image: radial-gradient(rgba(148, 163, 184, 0.22) 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    /* トーストアニメーション */
+    @keyframes slideUpFade {
+      from {
+        opacity: 0;
+        transform: translate(-50%, 14px);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+    }
+    .toast-enter {
+      animation: slideUpFade 0.25s ease forwards;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- ヘッダー（科学館タッチパネル風ナビゲーション） -->
+  <header id="appHeader" class="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md transition-colors duration-500">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-3">
+      <!-- タイトル・ロゴ -->
+      <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+        <div class="flex items-center gap-3">
+          <!-- 三原色プリズムSVGアイコン -->
+          <div class="w-10 h-10 rounded-xl bg-slate-800/90 border border-slate-700/70 flex items-center justify-center shadow-inner shrink-0">
+            <svg width="26" height="26" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <circle cx="16" cy="11.5" r="7.5" fill="#FF2A2A" fill-opacity="0.85" style="mix-blend-mode: screen;" />
+              <circle cx="11.8" cy="19" r="7.5" fill="#22EE44" fill-opacity="0.85" style="mix-blend-mode: screen;" />
+              <circle cx="20.2" cy="19" r="7.5" fill="#2A6BFF" fill-opacity="0.85" style="mix-blend-mode: screen;" />
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                SCIENCE LAB
+              </span>
+              <span id="modeShortBadge" class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                加法混色
+              </span>
+            </div>
+            <h1 class="text-base sm:text-lg font-bold tracking-tight mt-0.5">
+              光と色のじっけん室：光の三原色シミュレーター
+            </h1>
+          </div>
+        </div>
+      </div>
+
+      <!-- モード切替スイッチ（光の三原色 RGB / 色の三原色 CMY） -->
+      <div class="w-full md:w-auto flex justify-center">
+        <div id="modeSwitchContainer" class="inline-flex p-1 rounded-2xl bg-slate-800/90 border border-slate-700/80 shadow-inner w-full sm:w-auto" role="tablist" aria-label="実験モード切替">
+          <button
+            id="btnModeRGB"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            class="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md"
+          >
+            <span class="inline-flex -space-x-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-red-500 ring-1 ring-white/40"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-green-500 ring-1 ring-white/40"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-blue-500 ring-1 ring-white/40"></span>
+            </span>
+            <span>光の三原色 (RGB)</span>
+          </button>
+
+          <button
+            id="btnModeCMY"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            class="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 text-slate-300 hover:text-white"
+          >
+            <span class="inline-flex -space-x-1">
+              <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 ring-1 ring-black/20"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-fuchsia-500 ring-1 ring-black/20"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 ring-1 ring-black/20"></span>
+            </span>
+            <span>色の三原色 (CMY)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-5">
+
+    <!-- 上段：実験キャンバス ＋ コントロールパネル -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+
+      <!-- 左側（7〜8カラム）：実験ステージ＆リアルタイム色観察インスペクター -->
+      <section class="lg:col-span-7 xl:col-span-8 flex flex-col gap-3">
+        <!-- キャンバスカード -->
+        <div id="canvasCard" class="relative rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#05070a] transition-colors duration-500 flex-1 flex flex-col">
+          <!-- キャンバス上部ステータスバー -->
+          <div class="absolute top-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+            <div id="stageRulePill" class="px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md bg-slate-900/75 text-slate-200 border border-slate-700/70 flex items-center gap-2 shadow">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span id="stageRuleText">加法混色：光を重ねるほど明るく白に近づきます</span>
+            </div>
+
+            <div id="shadowBadge" class="hidden px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md bg-amber-500/20 text-amber-200 border border-amber-400/40 shadow">
+              遮蔽物実験中：色のついた影を観察しよう
+            </div>
+          </div>
+
+          <!-- インタラクティブ実験キャンバス -->
+          <div id="canvasWrapper" class="relative w-full h-[360px] sm:h-[440px] lg:h-[490px] cursor-grab active:cursor-grabbing">
+            <canvas id="experimentCanvas" class="w-full h-full block"></canvas>
+          </div>
+
+          <!-- キャンバス下部：リアルタイム スポイト（合成色観察バー） -->
+          <div id="inspectorBar" class="border-t border-slate-800/90 bg-slate-900/95 px-4 py-3 flex flex-wrap items-center justify-between gap-3 transition-colors duration-500">
+            <div class="flex items-center gap-3">
+              <!-- 合成色プレビュー丸枠 -->
+              <div class="relative">
+                <div
+                  id="inspectedSwatch"
+                  class="w-11 h-11 rounded-full border-2 border-white/80 shadow-lg transition-colors duration-75"
+                  style="background-color: rgb(255, 255, 255);"
+                ></div>
+                <span class="absolute -bottom-1 -right-1 text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-200 border border-slate-600 font-bold">
+                  観察
+                </span>
+              </div>
+
+              <!-- 色の名前とヒント -->
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-medium opacity-75">選択地点の色：</span>
+                  <span id="inspectedName" class="text-sm sm:text-base font-extrabold tracking-tight">
+                    白（ホワイト）
+                  </span>
+                </div>
+                <p id="inspectorHint" class="text-[11px] opacity-70 mt-0.5">
+                  キャンバス上をクリック／タップ・移動するとその場所の合成色を測定します
+                </p>
+              </div>
+            </div>
+
+            <!-- RGB数値 & HEXコード -->
+            <div class="flex items-center gap-2 sm:gap-3 ml-auto">
+              <div id="rgbReadoutBox" class="px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700/80 font-mono text-xs sm:text-sm font-bold flex items-center gap-2">
+                <span class="text-red-400">R:<span id="valR">255</span></span>
+                <span class="text-green-400">G:<span id="valG">255</span></span>
+                <span class="text-blue-400">B:<span id="valB">255</span></span>
+              </div>
+              <div id="hexReadoutBox" class="px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700/80 font-mono text-xs sm:text-sm font-bold tracking-wider">
+                #FFFFFF
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 右側（4〜5カラム）：コントロールパネル -->
+      <aside class="lg:col-span-5 xl:col-span-4 flex flex-col gap-4">
+
+        <!-- 1. 光の強さ / インクの濃さ スライダーパネル -->
+        <div id="panelSliders" class="rounded-2xl p-4 sm:p-5 border border-slate-800 bg-slate-900/90 shadow-lg transition-colors duration-500">
+          <div class="flex items-center justify-between mb-3.5">
+            <h2 id="sliderPanelTitle" class="text-sm sm:text-base font-bold flex items-center gap-2">
+              <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              <span>光の強さ（明るさ調整）</span>
+            </h2>
+            <button
+              id="btnAllMax"
+              type="button"
+              class="text-xs font-bold px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 border border-indigo-500/30 transition active:scale-95"
+            >
+              すべて100%
+            </button>
+          </div>
+
+          <div class="space-y-4">
+            <!-- チャンネル 0 (R / C) -->
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between text-xs sm:text-sm">
+                <label for="slider0" class="font-bold flex items-center gap-2">
+                  <span id="dot0" class="w-3.5 h-3.5 rounded-full bg-red-500 shadow-sm inline-block"></span>
+                  <span id="label0">赤（Red / R）</span>
+                </label>
+                <span id="pct0" class="font-mono font-bold text-sm">100%</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <input
+                  id="slider0"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="100"
+                  class="color-slider flex-1"
+                  style="--thumb-color: #ef4444; --thumb-glow: rgba(239,68,68,0.3); background: linear-gradient(90deg, #334155, #ef4444);"
+                />
+                <button
+                  type="button"
+                  data-ch="0"
+                  data-val="100"
+                  class="btn-quick-val px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold bg-slate-800 hover:bg-slate-700 border border-slate-700 transition active:scale-95"
+                >
+                  MAX
+                </button>
+                <button
+                  type="button"
+                  data-ch="0"
+                  data-val="0"
+                  class="btn-quick-val px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800/70 hover:bg-slate-700 border border-slate-700/70 opacity-80 hover:opacity-100 transition active:scale-95"
+                >
+                  OFF
+                </button>
+              </div>
+            </div>
+
+            <!-- チャンネル 1 (G / M) -->
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between text-xs sm:text-sm">
+                <label for="slider1" class="font-bold flex items-center gap-2">
+                  <span id="dot1" class="w-3.5 h-3.5 rounded-full bg-green-500 shadow-sm inline-block"></span>
+                  <span id="label1">緑（Green / G）</span>
+                </label>
+                <span id="pct1" class="font-mono font-bold text-sm">100%</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <input
+                  id="slider1"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="100"
+                  class="color-slider flex-1"
+                  style="--thumb-color: #22c55e; --thumb-glow: rgba(34,197,94,0.3); background: linear-gradient(90deg, #334155, #22c55e);"
+                />
+                <button
+                  type="button"
+                  data-ch="1"
+                  data-val="100"
+                  class="btn-quick-val px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold bg-slate-800 hover:bg-slate-700 border border-slate-700 transition active:scale-95"
+                >
+                  MAX
+                </button>
+                <button
+                  type="button"
+                  data-ch="1"
+                  data-val="0"
+                  class="btn-quick-val px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800/70 hover:bg-slate-700 border border-slate-700/70 opacity-80 hover:opacity-100 transition active:scale-95"
+                >
+                  OFF
+                </button>
+              </div>
+            </div>
+
+            <!-- チャンネル 2 (B / Y) -->
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between text-xs sm:text-sm">
+                <label for="slider2" class="font-bold flex items-center gap-2">
+                  <span id="dot2" class="w-3.5 h-3.5 rounded-full bg-blue-500 shadow-sm inline-block"></span>
+                  <span id="label2">青（Blue / B）</span>
+                </label>
+                <span id="pct2" class="font-mono font-bold text-sm">100%</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <input
+                  id="slider2"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="100"
+                  class="color-slider flex-1"
+                  style="--thumb-color: #3b82f6; --thumb-glow: rgba(59,130,246,0.3); background: linear-gradient(90deg, #334155, #3b82f6);"
+                />
+                <button
+                  type="button"
+                  data-ch="2"
+                  data-val="100"
+                  class="btn-quick-val px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold bg-slate-800 hover:bg-slate-700 border border-slate-700 transition active:scale-95"
+                >
+                  MAX
+                </button>
+                <button
+                  type="button"
+                  data-ch="2"
+                  data-val="0"
+                  class="btn-quick-val px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-slate-800/70 hover:bg-slate-700 border border-slate-700/70 opacity-80 hover:opacity-100 transition active:scale-95"
+                >
+                  OFF
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 配置プリセットボタン -->
+        <div id="panelPresets" class="rounded-2xl p-4 sm:p-5 border border-slate-800 bg-slate-900/90 shadow-lg transition-colors duration-500">
+          <h2 class="text-sm sm:text-base font-bold mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            <span>配置プリセット</span>
+          </h2>
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              id="presetVenn"
+              type="button"
+              class="preset-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700/90 text-xs font-bold transition active:scale-95"
+            >
+              <!-- ベン図ミニアイコン -->
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="12" cy="8.5" r="5" />
+                <circle cx="8.8" cy="14" r="5" />
+                <circle cx="15.2" cy="14" r="5" />
+              </svg>
+              <span class="text-center leading-tight">基本の重なり<br><span class="text-[10px] opacity-70 font-normal">（ベン図）</span></span>
+            </button>
+
+            <button
+              id="presetStack"
+              type="button"
+              class="preset-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700/90 text-xs font-bold transition active:scale-95"
+            >
+              <!-- 重なりミニアイコン -->
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="12" cy="12" r="6" />
+                <circle cx="12" cy="12" r="3.2" stroke-dasharray="2 2" />
+              </svg>
+              <span class="text-center leading-tight">3つを重ねる<br><span class="text-[10px] opacity-70 font-normal">（全色混合）</span></span>
+            </button>
+
+            <button
+              id="presetLine"
+              type="button"
+              class="preset-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700/90 text-xs font-bold transition active:scale-95"
+            >
+              <!-- 並べるミニアイコン -->
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="5.5" cy="12" r="3.2" />
+                <circle cx="12" cy="12" r="3.2" />
+                <circle cx="18.5" cy="12" r="3.2" />
+              </svg>
+              <span class="text-center leading-tight">並べる<br><span class="text-[10px] opacity-70 font-normal">（単独比較）</span></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. 実験オプション（トグルスイッチ） -->
+        <div id="panelOptions" class="rounded-2xl p-4 sm:p-5 border border-slate-800 bg-slate-900/90 shadow-lg transition-colors duration-500 flex-1 flex flex-col justify-center gap-3.5">
+          <h2 class="text-sm sm:text-base font-bold flex items-center gap-2">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+            <span>実験オプション</span>
+          </h2>
+
+          <!-- 遮蔽物（カラーシャドウ実験）トグル -->
+          <label class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-700/70 bg-slate-800/50 cursor-pointer hover:bg-slate-800/80 transition">
+            <div>
+              <div class="text-xs sm:text-sm font-bold flex items-center gap-1.5">
+                <span>遮蔽物（カラーシャドウ実験）</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">RGB専用</span>
+              </div>
+              <p class="text-[11px] opacity-75 mt-0.5 leading-snug">
+                中央に柱を置き、3つの光源から伸びるカラフルな影を観察します
+              </p>
+            </div>
+            <div class="relative inline-flex items-center shrink-0">
+              <input id="toggleShadow" type="checkbox" class="sr-only peer" />
+              <div class="w-12 h-7 bg-slate-700 rounded-full peer peer-checked:bg-amber-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:translate-x-5 shadow-inner"></div>
+            </div>
+          </label>
+
+          <!-- ガイドリング・ラベル表示トグル -->
+          <label class="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-700/70 bg-slate-800/50 cursor-pointer hover:bg-slate-800/80 transition">
+            <div>
+              <div class="text-xs sm:text-sm font-bold">
+                ガイドリング・ラベル表示
+              </div>
+              <p class="text-[11px] opacity-75 mt-0.5 leading-snug">
+                円の境界線や色名ラベル（R/G/B・強さ%）の表示を切り替えます
+              </p>
+            </div>
+            <div class="relative inline-flex items-center shrink-0">
+              <input id="toggleGuides" type="checkbox" checked class="sr-only peer" />
+              <div class="w-12 h-7 bg-slate-700 rounded-full peer peer-checked:bg-indigo-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:translate-x-5 shadow-inner"></div>
+            </div>
+          </label>
+        </div>
+
+      </aside>
+    </div>
+
+    <!-- 下段：操作ガイド＆混色早見表 -->
+    <section id="bottomGuideSection" class="rounded-2xl p-4 sm:p-5 border border-slate-800 bg-slate-900/90 shadow-lg transition-colors duration-500">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-slate-800/80">
+        <div class="flex items-start sm:items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 flex items-center justify-center shrink-0 mt-0.5 sm:mt-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <h3 class="text-xs sm:text-sm font-bold">じっけんガイド</h3>
+            <p class="text-xs sm:text-sm opacity-85 mt-0.5">
+              赤・緑・青の円をドラッグして重ねてみよう！モードを切り替えると『色の三原色』も実験できます。
+            </p>
+          </div>
+        </div>
+        <span class="text-[11px] opacity-70 shrink-0">
+          ※ 下の混色カードをタップするとその組み合わせを再現できます
+        </span>
+      </div>
+
+      <!-- 混色早見表（モードに応じて自動切替） -->
+      <div class="mt-4">
+        <div class="flex items-center justify-between mb-2.5">
+          <h4 id="chartTitle" class="text-xs font-bold uppercase tracking-wider opacity-80">
+            光の三原色（加法混色）の混色早見表
+          </h4>
+        </div>
+
+        <div id="mixingChartGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <!-- JavaScriptで動的に生成 -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- トースト通知（alert代替） -->
+  <div
+    id="toastMessage"
+    role="status"
+    aria-live="polite"
+    class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2.5 rounded-full text-xs sm:text-sm font-bold bg-slate-800 text-white border border-slate-600 shadow-2xl pointer-events-none"
+  ></div>
+
+  <script>
+    /**
+     * 光と色のじっけん室：光の三原色シミュレーター
+     * 科学技術館（キヤノン・光と色のじっけん室）展示アプリ風インタラクティブ実験エンジン
+     */
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 1. アプリケーション状態管理
+      // =========================================================================
+      const state = {
+        mode: 'rgb', // 'rgb' (光の三原色・加法混色) | 'cmy' (色の三原色・減法混色)
+        intensities: [100, 100, 100], // 各チャンネルの強さ (0〜100%)
+        showGuides: true,
+        shadowMode: false,
+
+        // キャンバス論理サイズとDPR
+        width: 600,
+        height: 450,
+        dpr: 1,
+        baseRadius: 110,
+
+        // 3つの円（中心からの相対座標 dx, dy で保持しリサイズに追従）
+        circles: [
+          { id: 0, dx: 0, dy: -65, targetDx: 0, targetDy: -65 },
+          { id: 1, dx: -56, dy: 38, targetDx: -56, targetDy: 38 },
+          { id: 2, dx: 56, dy: 38, targetDx: 56, targetDy: 38 },
+        ],
+        drawOrder: [0, 1, 2], // ドラッグ優先順位用
+
+        // カラーシャドウ用 遮蔽物（中心からの相対座標）
+        occluder: { dx: 0, dy: 0 },
+
+        // ドラッグ状態
+        draggingTarget: null, // null | { type: 'circle', index: 0..2 } | { type: 'occluder' }
+        dragOffset: { x: 0, y: 0 },
+        isAnimatingPreset: false,
+
+        // スポイト（ピクセル観察）座標（中心からの相対座標）
+        inspectPos: { dx: 0, dy: 0 },
+        hasCustomInspect: false,
+      };
+
+      // モードごとのメタデータ定義
+      const MODE_CONFIG = {
+        rgb: {
+          title: '光の強さ（明るさ調整）',
+          ruleText: '加法混色：光を重ねるほど明るく白に近づきます',
+          shortBadge: '加法混色',
+          chartTitle: '光の三原色（加法混色）の混色早見表',
+          channels: [
+            { key: 'R', short: '赤 (R)', name: '赤（Red / R）', hex: '#ef4444', rgb: [255, 0, 0] },
+            { key: 'G', short: '緑 (G)', name: '緑（Green / G）', hex: '#22c55e', rgb: [0, 255, 0] },
+            { key: 'B', short: '青 (B)', name: '青（Blue / B）', hex: '#3b82f6', rgb: [0, 0, 255] },
+          ],
+          formulas: [
+            { a: { label: '赤 (R)', color: '#ff0000' }, b: { label: '緑 (G)', color: '#00ff00' }, res: { label: '黄（イエロー）', color: '#ffff00' }, mix: [100, 100, 0] },
+            { a: { label: '緑 (G)', color: '#00ff00' }, b: { label: '青 (B)', color: '#0000ff' }, res: { label: 'シアン（水色）', color: '#00ffff' }, mix: [0, 100, 100] },
+            { a: { label: '青 (B)', color: '#0000ff' }, b: { label: '赤 (R)', color: '#ff0000' }, res: 'マゼンタ', resObj: { label: 'マゼンタ（赤紫）', color: '#ff00ff' }, mix: [100, 0, 100] },
+            { a: { label: '赤＋緑', color: '#ffff00' }, b: { label: '青 (B)', color: '#0000ff' }, res: { label: '白（ホワイト）', color: '#ffffff' }, mix: [100, 100, 100] },
+          ],
+        },
+        cmy: {
+          title: 'インクの濃さ（フィルタ濃度調整）',
+          ruleText: '減法混色：色を重ねるほど光を吸収し黒に近づきます',
+          shortBadge: '減法混色',
+          chartTitle: '色の三原色（減法混色）の混色早見表',
+          channels: [
+            { key: 'C', short: 'シアン (C)', name: 'シアン（Cyan / C）', hex: '#06b6d4', rgb: [0, 255, 255] },
+            { key: 'M', short: 'マゼンタ (M)', name: 'マゼンタ（Magenta / M）', hex: '#d946ef', rgb: [255, 0, 255] },
+            { key: 'Y', short: 'イエロー (Y)', name: 'イエロー（Yellow / Y）', hex: '#eab308', rgb: [255, 255, 0] },
+          ],
+          formulas: [
+            { a: { label: 'シアン (C)', color: '#00ffff' }, b: { label: 'マゼンタ (M)', color: '#ff00ff' }, res: { label: '青（ブルー）', color: '#0000ff' }, mix: [100, 100, 0] },
+            { a: { label: 'マゼンタ (M)', color: '#ff00ff' }, b: { label: 'イエロー (Y)', color: '#ffff00' }, res: { label: '赤（レッド）', color: '#ff0000' }, mix: [0, 100, 100] },
+            { a: { label: 'イエロー (Y)', color: '#ffff00' }, b: { label: 'シアン (C)', color: '#00ffff' }, res: { label: '緑（グリーン）', color: '#00ff00' }, mix: [100, 0, 100] },
+            { a: { label: 'C＋M', color: '#0000ff' }, b: { label: 'イエロー (Y)', color: '#ffff00' }, res: { label: '黒（ブラック）', color: '#0f172a' }, mix: [100, 100, 100] },
+          ],
+        },
+      };
+
+      // =========================================================================
+      // 2. DOM要素の取得
+      // =========================================================================
+      const canvasWrapper = document.getElementById('canvasWrapper');
+      const displayCanvas = document.getElementById('experimentCanvas');
+      const displayCtx = displayCanvas.getContext('2d');
+
+      // 純粋な光学/インク混色を描画するためのオフスクリーンキャンバス（UIガイド非混入でスポイト測定可能）
+      const sceneCanvas = document.createElement('canvas');
+      const sceneCtx = sceneCanvas.getContext('2d', { willReadFrequently: true });
+
+      // カラーシャドウ実験用の単一光源マスクキャンバス
+      const lightLayerCanvas = document.createElement('canvas');
+      const lightLayerCtx = lightLayerCanvas.getContext('2d');
+
+      // UI要素
+      const appHeader = document.getElementById('appHeader');
+      const canvasCard = document.getElementById('canvasCard');
+      const inspectorBar = document.getElementById('inspectorBar');
+      const stageRulePill = document.getElementById('stageRulePill');
+      const stageRuleText = document.getElementById('stageRuleText');
+      const modeShortBadge = document.getElementById('modeShortBadge');
+      const shadowBadge = document.getElementById('shadowBadge');
+
+      const btnModeRGB = document.getElementById('btnModeRGB');
+      const btnModeCMY = document.getElementById('btnModeCMY');
+      const modeSwitchContainer = document.getElementById('modeSwitchContainer');
+
+      const sliders = [
+        document.getElementById('slider0'),
+        document.getElementById('slider1'),
+        document.getElementById('slider2'),
+      ];
+      const pctLabels = [
+        document.getElementById('pct0'),
+        document.getElementById('pct1'),
+        document.getElementById('pct2'),
+      ];
+      const channelLabels = [
+        document.getElementById('label0'),
+        document.getElementById('label1'),
+        document.getElementById('label2'),
+      ];
+      const channelDots = [
+        document.getElementById('dot0'),
+        document.getElementById('dot1'),
+        document.getElementById('dot2'),
+      ];
+
+      const toggleShadow = document.getElementById('toggleShadow');
+      const toggleGuides = document.getElementById('toggleGuides');
+
+      const inspectedSwatch = document.getElementById('inspectedSwatch');
+      const inspectedName = document.getElementById('inspectedName');
+      const valR = document.getElementById('valR');
+      const valG = document.getElementById('valG');
+      const valB = document.getElementById('valB');
+      const hexReadoutBox = document.getElementById('hexReadoutBox');
+      const rgbReadoutBox = document.getElementById('rgbReadoutBox');
+
+      const mixingChartGrid = document.getElementById('mixingChartGrid');
+      const chartTitle = document.getElementById('chartTitle');
+      const toastEl = document.getElementById('toastMessage');
+
+      let toastTimer = null;
+
+      // =========================================================================
+      // 3. ユーティリティ関数（トースト通知・色名判定）
+      // =========================================================================
+      function showToast(message) {
+        if (!toastEl) return;
+        toastEl.textContent = message;
+        toastEl.classList.remove('hidden', 'toast-enter');
+        void toastEl.offsetWidth; // リフロー強制でアニメーション再発火
+        toastEl.classList.add('toast-enter');
+
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toastEl.classList.add('hidden');
+        }, 2800);
+      }
+
+      /**
+       * RGB値からわかりやすい日本語の色名を判定して返す
+       */
+      function getJapaneseColorName(r, g, b) {
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const diff = max - min;
+
+        // 無彩色（白・黒・グレー）判定
+        if (max < 24) return '黒（ブラック）';
+        if (min > 236) return '白（ホワイト）';
+        if (diff < 22) {
+          if (max < 95) return '濃いグレー';
+          if (max < 185) return 'グレー（灰色）';
+          return '明るいグレー';
+        }
+
+        // HSVの色相(H)・彩度(S)・明度(V)計算
+        let h = 0;
+        if (diff !== 0) {
+          if (max === r) {
+            h = ((g - b) / diff) % 6;
+          } else if (max === g) {
+            h = (b - r) / diff + 2;
+          } else {
+            h = (r - g) / diff + 4;
+          }
+          h = Math.round(h * 60);
+          if (h < 0) h += 360;
+        }
+        const s = max === 0 ? 0 : diff / max;
+        const v = max / 255;
+
+        let baseName = '';
+        if (h < 15 || h >= 345) baseName = '赤（レッド）';
+        else if (h < 42) baseName = 'オレンジ（橙）';
+        else if (h < 72) baseName = '黄（イエロー）';
+        else if (h < 105) baseName = '黄緑（ライム）';
+        else if (h < 155) baseName = '緑（グリーン）';
+        else if (h < 198) baseName = 'シアン（水色）';
+        else if (h < 225) baseName = '空色（ライトブルー）';
+        else if (h < 265) baseName = '青（ブルー）';
+        else if (h < 292) baseName = '青紫（バイオレット）';
+        else if (h < 328) baseName = 'マゼンタ（赤紫）';
+        else baseName = 'ピンク（ローズ）';
+
+        // 明るさや淡さに応じた修飾語
+        if (v < 0.52) {
+          return `暗い${baseName}`;
+        }
+        if (s < 0.42 && v > 0.82) {
+          return `淡い${baseName}`;
+        }
+        return baseName;
+      }
+
+      function componentToHex(c) {
+        const hex = Math.max(0, Math.min(255, Math.round(c))).toString(16).toUpperCase();
+        return hex.length === 1 ? '0' + hex : hex;
+      }
+
+      function rgbToHex(r, g, b) {
+        return `#${componentToHex(r)}${componentToHex(g)}${componentToHex(b)}`;
+      }
+
+      // =========================================================================
+      // 4. キャンバスサイズ調整と配置プリセット計算
+      // =========================================================================
+      function resizeCanvas(isInitial = false) {
+        try {
+          const rect = canvasWrapper.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) return;
+
+          const prevRadius = state.baseRadius;
+          state.width = rect.width;
+          state.height = rect.height;
+          state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+          const pixelW = Math.round(state.width * state.dpr);
+          const pixelH = Math.round(state.height * state.dpr);
+
+          [displayCanvas, sceneCanvas, lightLayerCanvas].forEach((c) => {
+            c.width = pixelW;
+            c.height = pixelH;
+          });
+
+          // 画面サイズに応じた最適な円の半径
+          state.baseRadius = Math.max(62, Math.min(132, Math.min(state.width, state.height) * 0.245));
+
+          if (isInitial) {
+            applyPreset('venn', false);
+          } else if (prevRadius > 0) {
+            // リサイズ時に既存の相対位置比率を保持
+            const scale = state.baseRadius / prevRadius;
+            state.circles.forEach((c) => {
+              c.dx *= scale;
+              c.dy *= scale;
+              c.targetDx *= scale;
+              c.targetDy *= scale;
+            });
+            state.occluder.dx *= scale;
+            state.occluder.dy *= scale;
+            state.inspectPos.dx *= scale;
+            state.inspectPos.dy *= scale;
+          }
+        } catch (err) {
+          console.error('Canvas resize error:', err);
+        }
+      }
+
+      /**
+       * 配置プリセットの適用
+       * @param {'venn'|'stack'|'line'} type
+       * @param {boolean} animate
+       */
+      function applyPreset(type, animate = true) {
+        const r = state.baseRadius;
+        let targets = [];
+
+        if (type === 'venn') {
+          // 基本の重なり（正三角形ベン図配置：中央と2色重なりがすべて見やすい距離）
+          const dist = r * 0.58;
+          targets = [
+            { dx: 0, dy: -dist * 0.92 },
+            { dx: -dist * 0.95, dy: dist * 0.68 },
+            { dx: dist * 0.95, dy: dist * 0.68 },
+          ];
+        } else if (type === 'stack') {
+          // 3つを中央でぴったり重ねる
+          targets = [
+            { dx: 0, dy: 0 },
+            { dx: 0, dy: 0 },
+            { dx: 0, dy: 0 },
+          ];
+        } else if (type === 'line') {
+          // 並べる（重ならないように横並び）
+          const maxGap = (state.width * 0.34);
+          const gap = Math.min(r * 2.15, maxGap);
+          targets = [
+            { dx: -gap, dy: 0 },
+            { dx: 0, dy: 0 },
+            { dx: gap, dy: 0 },
+          ];
+        }
+
+        // 遮蔽物も中央へ戻す
+        state.occluder.dx = 0;
+        state.occluder.dy = 0;
+
+        state.circles.forEach((c, idx) => {
+          c.targetDx = targets[idx].dx;
+          c.targetDy = targets[idx].dy;
+          if (!animate) {
+            c.dx = targets[idx].dx;
+            c.dy = targets[idx].dy;
+          }
+        });
+
+        state.isAnimatingPreset = animate;
+      }
+
+      // =========================================================================
+      // 5. 描画エンジン（光の三原色 RGB / 色の三原色 CMY / カラーシャドウ）
+      // =========================================================================
+
+      /**
+       * 単一のスポットライト（RGBモード）を描画するヘルパー
+       */
+      function drawSpotlightCircle(ctx, x, y, radius, rgb, intensity) {
+        if (intensity <= 0) return;
+        const [r, g, b] = rgb;
+        const vR = Math.round(r * intensity);
+        const vG = Math.round(g * intensity);
+        const vB = Math.round(b * intensity);
+
+        // 外側の柔らかな光暈（ハロー）
+        const haloRadius = radius * 1.14;
+        const grad = ctx.createRadialGradient(x, y, radius * 0.84, x, y, haloRadius);
+        grad.addColorStop(0, `rgba(${vR}, ${vG}, ${vB}, 1)`);
+        grad.addColorStop(0.68, `rgba(${vR}, ${vG}, ${vB}, 0.85)`);
+        grad.addColorStop(1, `rgba(${vR}, ${vG}, ${vB}, 0)`);
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, haloRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      /**
+       * 単一の半透明インク円（CMYモード）を描画するヘルパー
+       * 減法混色（multiply）では、白(255,255,255)が透明、原色が最大濃度となる
+       */
+      function drawInkCircle(ctx, x, y, radius, rgb, intensity) {
+        if (intensity <= 0) return;
+        // 濃度 intensity (0..1) に応じて白(255)からインク原色へ線形補間
+        const r = Math.round(255 - (255 - rgb[0]) * intensity);
+        const g = Math.round(255 - (255 - rgb[1]) * intensity);
+        const b = Math.round(255 - (255 - rgb[2]) * intensity);
+
+        // インク円本体（エッジをわずかに滲ませて自然な発色に）
+        const grad = ctx.createRadialGradient(x, y, radius * 0.94, x, y, radius * 1.01);
+        grad.addColorStop(0, `rgb(${r}, ${g}, ${b})`);
+        grad.addColorStop(1, `rgb(255, 255, 255)`);
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 1.01, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      /**
+       * 純粋な混色シーンを sceneCanvas に描画
+       */
+      function renderPureScene() {
+        const w = state.width;
+        const h = state.height;
+        const cx = w / 2;
+        const cy = h / 2;
+        const radius = state.baseRadius;
+        const config = MODE_CONFIG[state.mode];
+
+        sceneCtx.save();
+        sceneCtx.scale(state.dpr, state.dpr);
+
+        if (state.mode === 'rgb') {
+          // 1. 暗い実験室背景
+          sceneCtx.globalCompositeOperation = 'source-over';
+          sceneCtx.fillStyle = '#05070a';
+          sceneCtx.fillRect(0, 0, w, h);
+
+          if (!state.shadowMode) {
+            // 通常の加法混色（lighter）
+            sceneCtx.globalCompositeOperation = 'lighter';
+            state.circles.forEach((c, idx) => {
+              const intensity = state.intensities[idx] / 100;
+              drawSpotlightCircle(sceneCtx, cx + c.dx, cy + c.dy, radius, config.channels[idx].rgb, intensity);
+            });
+          } else {
+            // 遮蔽物（カラーシャドウ実験）モード
+            const occX = cx + state.occluder.dx;
+            const occY = cy + state.occluder.dy;
+            const occR = Math.max(18, radius * 0.23);
+
+            state.circles.forEach((c, idx) => {
+              const intensity = state.intensities[idx] / 100;
+              if (intensity <= 0) return;
+
+              const lx = cx + c.dx;
+              const ly = cy + c.dy;
+
+              // 光源ごとの個別レイヤーを初期化
+              lightLayerCtx.save();
+              lightLayerCtx.globalCompositeOperation = 'source-over';
+              lightLayerCtx.clearRect(0, 0, w * state.dpr, h * state.dpr);
+              lightLayerCtx.scale(state.dpr, state.dpr);
+
+              // スポットライトを描画
+              drawSpotlightCircle(lightLayerCtx, lx, ly, radius, config.channels[idx].rgb, intensity);
+
+              // 光源(lx, ly)から遮蔽物(occX, occY)を通過して伸びる影の幾何計算
+              const vx = occX - lx;
+              const vy = occY - ly;
+              const dist = Math.hypot(vx, vy);
+              const angle = Math.atan2(vy, vx);
+
+              // 影の中心位置と投影倍率
+              const shadowOffset = 0.78;
+              const sx = occX + vx * shadowOffset;
+              const sy = occY + vy * shadowOffset;
+              const srMinor = occR * 1.15;
+              const stretch = 1 + Math.min(dist / (radius * 2.5), 0.42);
+              const srMajor = srMinor * stretch;
+
+              // 影の部分だけ光を遮断（destination-out）
+              lightLayerCtx.globalCompositeOperation = 'destination-out';
+              lightLayerCtx.save();
+              lightLayerCtx.translate(sx, sy);
+              lightLayerCtx.rotate(angle);
+              lightLayerCtx.scale(stretch, 1);
+
+              const shadowGrad = lightLayerCtx.createRadialGradient(0, 0, srMinor * 0.78, 0, 0, srMinor * 1.08);
+              shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+              shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+              lightLayerCtx.fillStyle = shadowGrad;
+              lightLayerCtx.beginPath();
+              lightLayerCtx.arc(0, 0, srMinor * 1.08, 0, Math.PI * 2);
+              lightLayerCtx.fill();
+              lightLayerCtx.restore();
+              lightLayerCtx.restore();
+
+              // 影が抜かれた光レイヤーをメインシーンへ加法合成（lighter）
+              sceneCtx.globalCompositeOperation = 'lighter';
+              sceneCtx.drawImage(lightLayerCanvas, 0, 0, w, h);
+            });
+
+            // 物理的な遮蔽物（中央の円柱オブジェクト）を描画
+            sceneCtx.globalCompositeOperation = 'source-over';
+            const pillarGrad = sceneCtx.createRadialGradient(
+              occX - occR * 0.3,
+              occY - occR * 0.3,
+              occR * 0.1,
+              occX,
+              occY,
+              occR
+            );
+            pillarGrad.addColorStop(0, '#475569');
+            pillarGrad.addColorStop(0.7, '#1e293b');
+            pillarGrad.addColorStop(1, '#090d16');
+
+            sceneCtx.fillStyle = pillarGrad;
+            sceneCtx.beginPath();
+            sceneCtx.arc(occX, occY, occR, 0, Math.PI * 2);
+            sceneCtx.fill();
+
+            sceneCtx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+            sceneCtx.lineWidth = 1.5;
+            sceneCtx.stroke();
+          }
+        } else {
+          // CMYモード（色の三原色・減法混色）
+          sceneCtx.globalCompositeOperation = 'source-over';
+          sceneCtx.fillStyle = '#f8fafc';
+          sceneCtx.fillRect(0, 0, w, h);
+
+          // 減法混色（multiply）
+          sceneCtx.globalCompositeOperation = 'multiply';
+          state.circles.forEach((c, idx) => {
+            const intensity = state.intensities[idx] / 100;
+            drawInkCircle(sceneCtx, cx + c.dx, cy + c.dy, radius, config.channels[idx].rgb, intensity);
+          });
+        }
+
+        sceneCtx.restore();
+      }
+
+      /**
+       * メイン表示キャンバスに純粋シーン＋ガイドリング／UIオーバーレイを描画
+       */
+      function renderDisplay() {
+        const w = state.width;
+        const h = state.height;
+        const cx = w / 2;
+        const cy = h / 2;
+        const radius = state.baseRadius;
+        const config = MODE_CONFIG[state.mode];
+        const isRGB = state.mode === 'rgb';
+
+        // 1. 純粋な混色画像を描画してコピー
+        renderPureScene();
+        displayCtx.save();
+        displayCtx.globalCompositeOperation = 'source-over';
+        displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+        displayCtx.drawImage(sceneCanvas, 0, 0);
+
+        displayCtx.scale(state.dpr, state.dpr);
+
+        // 2. ガイドリング・ラベルの描画（ON時）
+        if (state.showGuides) {
+          state.drawOrder.forEach((idx) => {
+            const c = state.circles[idx];
+            const ch = config.channels[idx];
+            const x = cx + c.dx;
+            const y = cy + c.dy;
+            const pct = state.intensities[idx];
+            const isDraggingThis =
+              state.draggingTarget &&
+              state.draggingTarget.type === 'circle' &&
+              state.draggingTarget.index === idx;
+
+            // 外縁の繊細な破線ガイドリング
+            displayCtx.save();
+            displayCtx.beginPath();
+            displayCtx.arc(x, y, radius, 0, Math.PI * 2);
+            displayCtx.strokeStyle = isRGB
+              ? isDraggingThis
+                ? 'rgba(255, 255, 255, 0.85)'
+                : 'rgba(255, 255, 255, 0.34)'
+              : isDraggingThis
+              ? 'rgba(15, 23, 42, 0.8)'
+              : 'rgba(15, 23, 42, 0.28)';
+            displayCtx.lineWidth = isDraggingThis ? 2.2 : 1.3;
+            displayCtx.setLineDash([5, 5]);
+            displayCtx.stroke();
+            displayCtx.restore();
+
+            // ドラッグハンドル（中心の小さな十字ターゲット）
+            displayCtx.save();
+            const handleR = isDraggingThis ? 7 : 5;
+            displayCtx.beginPath();
+            displayCtx.arc(x, y, handleR, 0, Math.PI * 2);
+            displayCtx.fillStyle = isRGB ? 'rgba(15, 23, 42, 0.55)' : 'rgba(255, 255, 255, 0.75)';
+            displayCtx.fill();
+            displayCtx.strokeStyle = isRGB ? 'rgba(255, 255, 255, 0.85)' : 'rgba(15, 23, 42, 0.75)';
+            displayCtx.lineWidth = 1.5;
+            displayCtx.stroke();
+            displayCtx.restore();
+
+            // ラベルバッジ（R / G / B または C / M / Y + %）
+            const labelText = `${ch.key} ${pct}%`;
+            displayCtx.save();
+            displayCtx.font = '700 12px "Inter", "Noto Sans JP", sans-serif';
+            const textMetrics = displayCtx.measureText(labelText);
+            const padX = 9;
+            const boxW = textMetrics.width + padX * 2;
+            const boxH = 22;
+            const labelY = y - 16;
+
+            // ピル背景
+            displayCtx.beginPath();
+            displayCtx.roundRect(x - boxW / 2, labelY - boxH / 2, boxW, boxH, 999);
+            displayCtx.fillStyle = isRGB ? 'rgba(15, 23, 42, 0.72)' : 'rgba(255, 255, 255, 0.84)';
+            displayCtx.fill();
+            displayCtx.strokeStyle = ch.hex;
+            displayCtx.lineWidth = 1.4;
+            displayCtx.stroke();
+
+            // テキスト
+            displayCtx.fillStyle = isRGB ? '#f8fafc' : '#0f172a';
+            displayCtx.textAlign = 'center';
+            displayCtx.textBaseline = 'middle';
+            displayCtx.fillText(labelText, x, labelY + 0.5);
+            displayCtx.restore();
+          });
+
+          // 遮蔽物ラベル（カラーシャドウON時）
+          if (isRGB && state.shadowMode) {
+            const occX = cx + state.occluder.dx;
+            const occY = cy + state.occluder.dy;
+            const occR = Math.max(18, radius * 0.23);
+
+            displayCtx.save();
+            displayCtx.font = '700 10px "Noto Sans JP", sans-serif';
+            displayCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            displayCtx.textAlign = 'center';
+            displayCtx.textBaseline = 'middle';
+            displayCtx.fillText('遮蔽物', occX, occY + occR + 12);
+            displayCtx.restore();
+          }
+        }
+
+        // 3. スポイト観察ポイントのレティクル（ユーザーがキャンバスをクリック/ホバーした位置）
+        if (state.hasCustomInspect) {
+          const ix = cx + state.inspectPos.dx;
+          const iy = cy + state.inspectPos.dy;
+          displayCtx.save();
+          displayCtx.beginPath();
+          displayCtx.arc(ix, iy, 7, 0, Math.PI * 2);
+          displayCtx.strokeStyle = isRGB ? '#ffffff' : '#0f172a';
+          displayCtx.lineWidth = 2;
+          displayCtx.stroke();
+
+          displayCtx.beginPath();
+          displayCtx.arc(ix, iy, 9, 0, Math.PI * 2);
+          displayCtx.strokeStyle = isRGB ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.85)';
+          displayCtx.lineWidth = 1.2;
+          displayCtx.stroke();
+          displayCtx.restore();
+        }
+
+        displayCtx.restore();
+
+        // 4. リアルタイム色彩インスペクター更新
+        updateColorInspector();
+      }
+
+      /**
+       * 指定地点のピクセル色を sceneCanvas から取得してインスペクターUIを更新
+       */
+      function updateColorInspector() {
+        try {
+          const cx = state.width / 2;
+          const cy = state.height / 2;
+          const targetX = Math.max(0, Math.min(state.width - 1, cx + state.inspectPos.dx));
+          const targetY = Math.max(0, Math.min(state.height - 1, cy + state.inspectPos.dy));
+
+          const px = Math.round(targetX * state.dpr);
+          const py = Math.round(targetY * state.dpr);
+
+          const pixel = sceneCtx.getImageData(px, py, 1, 1).data;
+          const r = pixel[0];
+          const g = pixel[1];
+          const b = pixel[2];
+
+          inspectedSwatch.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+          valR.textContent = r;
+          valG.textContent = g;
+          valB.textContent = b;
+          hexReadoutBox.textContent = rgbToHex(r, g, b);
+          inspectedName.textContent = getJapaneseColorName(r, g, b);
+        } catch (err) {
+          // 読み取りエラー時は安全にスキップ
+        }
+      }
+
+      // =========================================================================
+      // 6. UIテーマ・コントロール連動更新
+      // =========================================================================
+      function updateModeUI() {
+        const isRGB = state.mode === 'rgb';
+        const config = MODE_CONFIG[state.mode];
+
+        // 全体テーマ（ダーク実験室 vs ホワイト画用紙）
+        if (isRGB) {
+          document.body.className = 'bg-slate-950 text-slate-100 min-h-screen flex flex-col';
+          appHeader.className = 'sticky top-0 z-30 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md transition-colors duration-500';
+          modeSwitchContainer.className = 'inline-flex p-1 rounded-2xl bg-slate-800/90 border border-slate-700/80 shadow-inner w-full sm:w-auto';
+
+          btnModeRGB.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md';
+          btnModeCMY.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 text-slate-300 hover:text-white';
+
+          canvasCard.className = 'relative rounded-2xl overflow-hidden border border-slate-800 shadow-2xl bg-[#05070a] transition-colors duration-500 flex-1 flex flex-col';
+          inspectorBar.className = 'border-t border-slate-800/90 bg-slate-900/95 px-4 py-3 flex flex-wrap items-center justify-between gap-3 transition-colors duration-500';
+          stageRulePill.className = 'px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md bg-slate-900/75 text-slate-200 border border-slate-700/70 flex items-center gap-2 shadow';
+          modeShortBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30';
+
+          rgbReadoutBox.className = 'px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700/80 font-mono text-xs sm:text-sm font-bold flex items-center gap-2';
+          hexReadoutBox.className = 'px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700/80 font-mono text-xs sm:text-sm font-bold tracking-wider';
+          inspectedSwatch.style.borderColor = 'rgba(255,255,255,0.85)';
+
+          ['panelSliders', 'panelPresets', 'panelOptions', 'bottomGuideSection'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.className = el.className.replace(/border-slate-200 bg-white\/95/g, 'border-slate-800 bg-slate-900/90');
+          });
+          document.querySelectorAll('.preset-btn').forEach((btn) => {
+            btn.className = 'preset-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700/90 text-xs font-bold transition active:scale-95';
+          });
+          document.querySelectorAll('.btn-quick-val').forEach((btn) => {
+            btn.className = btn.className.replace(/bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800/g, 'bg-slate-800 hover:bg-slate-700 border-slate-700');
+          });
+        } else {
+          // CMYモード：白い画用紙テーマ
+          document.body.className = 'bg-slate-100 text-slate-800 min-h-screen flex flex-col paper-grid';
+          appHeader.className = 'sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-md transition-colors duration-500';
+          modeSwitchContainer.className = 'inline-flex p-1 rounded-2xl bg-slate-100 border border-slate-200 shadow-inner w-full sm:w-auto';
+
+          btnModeRGB.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 text-slate-600 hover:text-slate-900';
+          btnModeCMY.className = 'flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-300 bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-amber-400 text-white shadow-md';
+
+          canvasCard.className = 'relative rounded-2xl overflow-hidden border border-slate-200 shadow-xl bg-[#f8fafc] transition-colors duration-500 flex-1 flex flex-col';
+          inspectorBar.className = 'border-t border-slate-200 bg-white/95 px-4 py-3 flex flex-wrap items-center justify-between gap-3 transition-colors duration-500';
+          stageRulePill.className = 'px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md bg-white/85 text-slate-700 border border-slate-200 flex items-center gap-2 shadow-sm';
+          modeShortBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-700 border border-cyan-500/30';
+
+          rgbReadoutBox.className = 'px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 font-mono text-xs sm:text-sm font-bold flex items-center gap-2';
+          hexReadoutBox.className = 'px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 font-mono text-xs sm:text-sm font-bold tracking-wider';
+          inspectedSwatch.style.borderColor = 'rgba(15,23,42,0.25)';
+
+          ['panelSliders', 'panelPresets', 'panelOptions', 'bottomGuideSection'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.className = el.className.replace(/border-slate-800 bg-slate-900\/90/g, 'border-slate-200 bg-white/95');
+          });
+          document.querySelectorAll('.preset-btn').forEach((btn) => {
+            btn.className = 'preset-btn flex flex-col items-center justify-center gap-1.5 p-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-700 transition active:scale-95';
+          });
+          document.querySelectorAll('.btn-quick-val').forEach((btn) => {
+            btn.className = btn.className.replace(/bg-slate-800 hover:bg-slate-700 border-slate-700/g, 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800');
+          });
+        }
+
+        // テキストとスライダーの更新
+        document.getElementById('sliderPanelTitle').querySelector('span').textContent = config.title;
+        stageRuleText.textContent = config.ruleText;
+        modeShortBadge.textContent = config.shortBadge;
+        chartTitle.textContent = config.chartTitle;
+
+        config.channels.forEach((ch, i) => {
+          channelLabels[i].textContent = ch.name;
+          channelDots[i].style.backgroundColor = ch.hex;
+          sliders[i].style.setProperty('--thumb-color', ch.hex);
+          sliders[i].style.setProperty('--thumb-glow', `${ch.hex}44`);
+          updateSliderTrack(i);
+        });
+
+        // 混色早見表の再描画
+        renderMixingChart();
+      }
+
+      function updateSliderTrack(idx) {
+        const val = state.intensities[idx];
+        const ch = MODE_CONFIG[state.mode].channels[idx];
+        const baseTrack = state.mode === 'rgb' ? '#334155' : '#cbd5e1';
+        sliders[idx].value = val;
+        pctLabels[idx].textContent = `${val}%`;
+        sliders[idx].style.background = `linear-gradient(90deg, ${ch.hex} 0%, ${ch.hex} ${val}%, ${baseTrack} ${val}%, ${baseTrack} 100%)`;
+      }
+
+      function renderMixingChart() {
+        const config = MODE_CONFIG[state.mode];
+        const isRGB = state.mode === 'rgb';
+        mixingChartGrid.innerHTML = '';
+
+        config.formulas.forEach((f) => {
+          const resObj = f.resObj || f.res;
+          const card = document.createElement('button');
+          card.type = 'button';
+          card.className = isRGB
+            ? 'flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border border-slate-800 bg-slate-800/50 hover:bg-slate-800 hover:border-slate-600 text-left transition active:scale-98'
+            : 'flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 text-left transition active:scale-98';
+
+          card.innerHTML = `
+            <div class="flex items-center gap-1.5 text-xs font-bold flex-wrap">
+              <span class="inline-flex items-center gap-1">
+                <span class="w-3 h-3 rounded-full border border-black/20 shrink-0" style="background:${f.a.color}"></span>
+                <span>${f.a.label}</span>
+              </span>
+              <span class="opacity-60">＋</span>
+              <span class="inline-flex items-center gap-1">
+                <span class="w-3 h-3 rounded-full border border-black/20 shrink-0" style="background:${f.b.color}"></span>
+                <span>${f.b.label}</span>
+              </span>
+            </div>
+            <div class="flex items-center gap-1.5 text-xs font-extrabold shrink-0">
+              <span class="opacity-60">＝</span>
+              <span class="w-3.5 h-3.5 rounded-full border ${isRGB ? 'border-white/50' : 'border-slate-400'} shrink-0" style="background:${resObj.color}"></span>
+              <span>${resObj.label}</span>
+            </div>
+          `;
+
+          // タップでその混色パターンをキャンバスに再現
+          card.addEventListener('click', () => {
+            state.intensities = [...f.mix];
+            [0, 1, 2].forEach(updateSliderTrack);
+            applyPreset('venn', true);
+            showToast(`「${f.a.label} ＋ ${f.b.label} ＝ ${resObj.label}」を再現しました`);
+          });
+
+          mixingChartGrid.appendChild(card);
+        });
+      }
+
+      // =========================================================================
+      // 7. マウス＆タッチ操作（ドラッグ移動＆スポイト観察）
+      // =========================================================================
+      function getPointerCoords(evt) {
+        const rect = displayCanvas.getBoundingClientRect();
+        let clientX, clientY;
+        if (evt.touches && evt.touches.length > 0) {
+          clientX = evt.touches[0].clientX;
+          clientY = evt.touches[0].clientY;
+        } else if (evt.changedTouches && evt.changedTouches.length > 0) {
+          clientX = evt.changedTouches[0].clientX;
+          clientY = evt.changedTouches[0].clientY;
+        } else {
+          clientX = evt.clientX;
+          clientY = evt.clientY;
+        }
+        return {
+          x: clientX - rect.left,
+          y: clientY - rect.top,
+        };
+      }
+
+      function handlePointerDown(evt) {
+        const pt = getPointerCoords(evt);
+        const cx = state.width / 2;
+        const cy = state.height / 2;
+
+        // スポイト測定位置を更新
+        state.inspectPos.dx = pt.x - cx;
+        state.inspectPos.dy = pt.y - cy;
+        state.hasCustomInspect = true;
+
+        // 1. カラーシャドウ実験中の遮蔽物ヒット判定
+        if (state.mode === 'rgb' && state.shadowMode) {
+          const occX = cx + state.occluder.dx;
+          const occY = cy + state.occluder.dy;
+          const occR = Math.max(22, state.baseRadius * 0.25);
+          if (Math.hypot(pt.x - occX, pt.y - occY) <= occR) {
+            state.draggingTarget = { type: 'occluder' };
+            state.dragOffset = { x: pt.x - occX, y: pt.y - occY };
+            state.isAnimatingPreset = false;
+            return;
+          }
+        }
+
+        // 2. 3つの円のヒット判定（手前にある順 drawOrder の逆順でチェック）
+        for (let i = state.drawOrder.length - 1; i >= 0; i--) {
+          const idx = state.drawOrder[i];
+          const c = state.circles[idx];
+          const circleX = cx + c.dx;
+          const circleY = cy + c.dy;
+          const dist = Math.hypot(pt.x - circleX, pt.y - circleY);
+
+          if (dist <= state.baseRadius) {
+            state.draggingTarget = { type: 'circle', index: idx };
+            state.dragOffset = { x: pt.x - circleX, y: pt.y - circleY };
+            state.isAnimatingPreset = false;
+
+            // 選択した円を最前面へ移動
+            state.drawOrder = state.drawOrder.filter((id) => id !== idx);
+            state.drawOrder.push(idx);
+            break;
+          }
+        }
+      }
+
+      function handlePointerMove(evt) {
+        const pt = getPointerCoords(evt);
+        const cx = state.width / 2;
+        const cy = state.height / 2;
+
+        // ドラッグ中でなければホバー位置の色をリアルタイム観察
+        if (!state.draggingTarget) {
+          state.inspectPos.dx = pt.x - cx;
+          state.inspectPos.dy = pt.y - cy;
+          state.hasCustomInspect = true;
+          return;
+        }
+
+        if (evt.cancelable) evt.preventDefault();
+
+        const maxDx = cx - state.baseRadius * 0.35;
+        const maxDy = cy - state.baseRadius * 0.35;
+
+        if (state.draggingTarget.type === 'circle') {
+          const idx = state.draggingTarget.index;
+          const c = state.circles[idx];
+          const nextDx = pt.x - state.dragOffset.x - cx;
+          const nextDy = pt.y - state.dragOffset.y - cy;
+
+          c.dx = Math.max(-maxDx, Math.min(maxDx, nextDx));
+          c.dy = Math.max(-maxDy, Math.min(maxDy, nextDy));
+          c.targetDx = c.dx;
+          c.targetDy = c.dy;
+
+          // ドラッグ中の円の中心付近をスポイト追跡
+          state.inspectPos.dx = pt.x - cx;
+          state.inspectPos.dy = pt.y - cy;
+        } else if (state.draggingTarget.type === 'occluder') {
+          const nextDx = pt.x - state.dragOffset.x - cx;
+          const nextDy = pt.y - state.dragOffset.y - cy;
+          state.occluder.dx = Math.max(-maxDx, Math.min(maxDx, nextDx));
+          state.occluder.dy = Math.max(-maxDy, Math.min(maxDy, nextDy));
+        }
+      }
+
+      function handlePointerUp() {
+        state.draggingTarget = null;
+      }
+
+      // マウス・タッチイベント登録
+      displayCanvas.addEventListener('mousedown', handlePointerDown);
+      window.addEventListener('mousemove', handlePointerMove);
+      window.addEventListener('mouseup', handlePointerUp);
+
+      displayCanvas.addEventListener('touchstart', handlePointerDown, { passive: false });
+      window.addEventListener('touchmove', handlePointerMove, { passive: false });
+      window.addEventListener('touchend', handlePointerUp);
+      window.addEventListener('touchcancel', handlePointerUp);
+
+      // =========================================================================
+      // 8. コントロールパネル イベント登録
+      // =========================================================================
+      function switchMode(newMode) {
+        if (state.mode === newMode) return;
+        state.mode = newMode;
+
+        // CMYモード切替時はカラーシャドウ実験を自動OFF
+        if (newMode === 'cmy' && state.shadowMode) {
+          state.shadowMode = false;
+          toggleShadow.checked = false;
+          shadowBadge.classList.add('hidden');
+        }
+
+        updateModeUI();
+      }
+
+      btnModeRGB.addEventListener('click', () => switchMode('rgb'));
+      btnModeCMY.addEventListener('click', () => switchMode('cmy'));
+
+      // 強さスライダー
+      sliders.forEach((slider, idx) => {
+        slider.addEventListener('input', (e) => {
+          state.intensities[idx] = parseInt(e.target.value, 10);
+          updateSliderTrack(idx);
+        });
+      });
+
+      // MAX / OFF クイックボタン
+      document.querySelectorAll('.btn-quick-val').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const ch = parseInt(btn.dataset.ch, 10);
+          const val = parseInt(btn.dataset.val, 10);
+          state.intensities[ch] = val;
+          updateSliderTrack(ch);
+        });
+      });
+
+      // すべて100%ボタン
+      document.getElementById('btnAllMax').addEventListener('click', () => {
+        state.intensities = [100, 100, 100];
+        [0, 1, 2].forEach(updateSliderTrack);
+        showToast('3色すべての強さを100%にしました');
+      });
+
+      // 配置プリセットボタン
+      document.getElementById('presetVenn').addEventListener('click', () => applyPreset('venn', true));
+      document.getElementById('presetStack').addEventListener('click', () => applyPreset('stack', true));
+      document.getElementById('presetLine').addEventListener('click', () => applyPreset('line', true));
+
+      // 遮蔽物（カラーシャドウ実験）トグル
+      toggleShadow.addEventListener('change', (e) => {
+        const enabled = e.target.checked;
+        if (enabled && state.mode !== 'rgb') {
+          switchMode('rgb');
+          showToast('「光の三原色」モードに切り替えてカラーシャドウ実験を開始します');
+        }
+        state.shadowMode = enabled;
+        if (enabled) {
+          shadowBadge.classList.remove('hidden');
+          // 影が見えやすいようにベン図配置へ誘導
+          applyPreset('venn', true);
+        } else {
+          shadowBadge.classList.add('hidden');
+        }
+      });
+
+      // ガイドリング・ラベル表示トグル
+      toggleGuides.addEventListener('change', (e) => {
+        state.showGuides = e.target.checked;
+      });
+
+      // =========================================================================
+      // 9. メインアニメーションループ（60fps）
+      // =========================================================================
+      function animateLoop() {
+        // プリセット配置の滑らかなイージングアニメーション
+        if (state.isAnimatingPreset) {
+          let allSettled = true;
+          state.circles.forEach((c) => {
+            const diffX = c.targetDx - c.dx;
+            const diffY = c.targetDy - c.dy;
+            if (Math.hypot(diffX, diffY) > 0.35) {
+              c.dx += diffX * 0.18;
+              c.dy += diffY * 0.18;
+              allSettled = false;
+            } else {
+              c.dx = c.targetDx;
+              c.dy = c.targetDy;
+            }
+          });
+          if (allSettled) {
+            state.isAnimatingPreset = false;
+          }
+        }
+
+        renderDisplay();
+        requestAnimationFrame(animateLoop);
+      }
+
+      // 初期化とリサイズ監視
+      window.addEventListener('resize', () => resizeCanvas(false));
+
+      window.onload = function () {
+        resizeCanvas(true);
+        updateModeUI();
+        animateLoop();
+      };
+    })();
+  </script>
+</body>
+</html>
